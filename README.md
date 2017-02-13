@@ -25,7 +25,7 @@ Olga Kondrashova :princess:.
 
 + **Software Dependencies** (provided in the AmpliVar package):  
  * [Samtools](http://samtools.sourceforge.net/)   
- * [CutAdapt](https://github.com/marcelm/cutadapt)
+ * [CutAdapt](https://github.com/marcelm/cutadapt) Not provided, use pip install.
  * [SeqPrep](https://github.com/jstjohn/SeqPrep)      
  * [VarScan2](http://varscan.sourceforge.net/)
  * [BLAT](http://hgdownload.cse.ucsc.edu/admin/exe/) (gfClient and gfServer)  
