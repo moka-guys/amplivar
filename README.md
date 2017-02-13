@@ -25,6 +25,7 @@ Olga Kondrashova :princess:.
 
 + **Software Dependencies** (provided in the AmpliVar package):  
  * [Samtools](http://samtools.sourceforge.net/)   
+ * [CutAdapt](https://github.com/marcelm/cutadapt)
  * [SeqPrep](https://github.com/jstjohn/SeqPrep)      
  * [VarScan2](http://varscan.sourceforge.net/)
  * [BLAT](http://hgdownload.cse.ucsc.edu/admin/exe/) (gfClient and gfServer)  
@@ -190,7 +191,7 @@ Olga Kondrashova :princess:.
    The Sequence alignment/map (SAM) format and SAMtools. *Bioinformatics*, 25, 2078-9.
  * Koboldt, D., Zhang, Q., Larson, D., Shen, D., McLellan, M., Lin, L., Miller, C., Mardis, E., Ding, L., & Wilson, R. (2012)  
    VarScan 2: Somatic mutation and copy number alteration discovery in cancer by exome sequencing, *Genome Research*, 22(3):568-76.
- * Kent, W.J. (2002). BLAT--the BLAST-like alignment tool. *Genome Research*, 12(4):656–664.
+ * Kent, W.J. (2002). BLAT--the BLAST-like alignment tool. *Genome Research*, 12(4):656√ê664.
  * Garrison, E., Marth, G. (2012). Haplotype-based variant detection from short-read sequencing. arXiv preprint arXiv:1207.3907v2 [q-bio.GN]
  * O. Tange (2011): GNU Parallel - The Command-Line Power Tool, ;login: The USENIX Magazine, February 2011:42-47.
 
