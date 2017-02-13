@@ -227,6 +227,9 @@ for $fastq (@file_list)
 	print "\n$fastq\n";
 	print $LOG "$fastq\n";
 	`gunzip $fastq`;
+	`cutadapt -a AGATCGGAAGAGCACACGTCTG -g CAGACGTGTGCTCTTCCGATCT -o $fastq.cut.fastq  $fastq`;
+	}
+@file_list = glob "$source_dir/*cut\.fastq";
 	}
 @file_list = glob "$source_dir/*fastq";
 for $fastq (@file_list)
