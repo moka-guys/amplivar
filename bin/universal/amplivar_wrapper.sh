@@ -454,7 +454,7 @@ function amplivar_call_variant {
     RC=`$SAMTOOLS view ${PREFIX}.blat.bam | head | wc -l`
     if [ $RC -gt 0 ]; then
         $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.blat.bam 2>>${PREFIX}.log | \
-        /usr/bin/env java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.3.6.jar mpileup2cns \
+        /usr/bin/env java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
             --variants --output-vcf 1 --strand-filter 0 \
             --min-var-freq `echo ${MINFREQ} | awk '{print($1/100)}'` \
             --min-coverage ${MINCOV} \
