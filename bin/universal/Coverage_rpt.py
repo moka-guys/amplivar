@@ -38,7 +38,7 @@ def readdep(df_flank, rpt, df_bed):
             # identify which cDNA and Codons are covered by amplicon from bedfile
             for index, bed in df_bed.iterrows():
                 if rd['gene'].strip() == bed['Amplivar_Name']:
-                    df_2000.loc[len(df_1000)] = rd['gene'], bed['Gene'], bed['cDNA'], bed['Codons'], rd['total'], rd[
+                    df_2000.loc[len(df_2000)] = rd['gene'], bed['Gene'], bed['cDNA'], bed['Codons'], rd['total'], rd[
                         'forward'], rd['reverse']
 
 
