@@ -227,6 +227,7 @@ for $fastq (@file_list)
 	print "\n$fastq\n";
 	print $LOG "$fastq\n";
 	`gunzip $fastq`;
+	print "fastq name after gunzip = $fastq\n";
 	$fastq =~ s/.gz// ;
 	`cutadapt -a AGATCGGAAGAGCACACGTCTG -g CAGACGTGTGCTCTTCCGATCT -o $fastq.cut.fastq  $fastq`;
 	}
@@ -234,7 +235,7 @@ for $fastq (@file_list)
 for $fastq (@file_list)
 	{
 	print "\n$fastq\n";
-	print $LOG "$fastq\n";	
+	print $LOG "$fastq\n";
 	quality_filter("$fastq") ;
 	}
 } # END sub fastq2fasta 
@@ -311,6 +312,7 @@ $count =1 ;
 while (<FASTQ>) 
 	{
 	chomp $_ ;
+	#cutadapt
 	if ($count == 1) 
 		{
 		$header = $_  ;
@@ -918,7 +920,7 @@ for $dna_filename(@file_list) # loop through file list;
 			$fasta = $sequence[1] ; #read output from run #should be $1
 				if ($fasta =~ m/$read/i ) 
 				{
-				#$fasta=$1; remove
+				$fasta=$1; #unremove
 				$count_regex{$name} = $count_regex{$name} + $readcount ;  #count matches. 
 				$positive_f = "$name\t$readcount\t$1\n" ;
 				print $HANDLE_POS_F "$positive_f" ;
@@ -926,11 +928,11 @@ for $dna_filename(@file_list) # loop through file list;
 				}
 			   elsif ($fasta =~ m/$revcomp/i ) 
 			   	{
-			   	$fasta=reverse($1);
-			   	$fasta=~tr/ACGTacgt/TGCAtgca/ ;
+			   $fasta=$1;
+			   	#$fasta=~tr/ACGTacgt/TGCAtgca/ ;
 				$count_rcregex{$name} = $count_rcregex{$name} + $readcount ; #count matches. 
 				$positive_r = "$name\t$readcount\t$fasta\n" ;
-				print $HANDLE_POS_F "$positive_r" ; #putting all matches in POS_F file
+				print $HANDLE_POS_R "$positive_r" ; #stop putting all matches in POS_F file
 				$mapped_reads = $mapped_reads + $readcount ;
 				}		
 			}# end for $seq(@fasta)
@@ -942,6 +944,8 @@ for $dna_filename(@file_list) # loop through file list;
 	print "mapped reads\t$mapped_reads\ttotal reads\t$total_reads\tpercent mapped\t$percent_mapped\n" ;
 	print $LOG "$dna_filename\nmapped reads\t$mapped_reads\ntotal reads\t$total_reads\npercent mapped\t$percent_mapped\n" ;
 	close ($OUTPUT_GENOTYPE ) ;
+	close ($HANDLE_POS_F) ;
+	close ($HANDLE_POS_R) ;
 	close ($HANDLE_NEG) ;
 	} # end loop through @file_list
 # move genotype files to genotype directory
@@ -1016,7 +1020,7 @@ unless ( -e $look_up)
 close LOOKUP ;
 print "\nlook up table\t$look_up\n"; #table for flanking reads
 
-@file_list = glob "$flanked_dir/*_grp_flanked_positive_f"; #?fixed this by revcomp and merging
+@file_list = glob "$flanked_dir/*_grp_flanked_positive_*"; #keeping f & r seperate
 # positive_f and positive_r
 print "\nfile list\t@file_list\n";
 $locus_dir = "$output_dir/locus";
