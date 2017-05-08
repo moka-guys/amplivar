@@ -541,6 +541,11 @@ else
     # Genotyping (already done in amplivar.pl)
     echo "$MODE mode, skipping alignment and variant calling."
 fi
+# run coverage report generation when in variant calling mode
+if [ $MODE == "VARIANT_CALLING" ]; then
+    echo "$(tput setaf 3)Generating coverage reports$(tput sgr0)"
+    python ${AMPLIDIR}/bin/universal/Coverage_rpt.py -o $ANALYSIS_DIR -a $AMPLIDIR
+fi
 
 # House-keeping
 if [ $KEEPFILES -eq 1 ]; then
@@ -557,9 +562,11 @@ elif [ $KEEPFILES -eq 2 ]; then
     fi
 elif [ $KEEPFILES -eq 3 ]; then
     if [ $MODE == "VARIANT_CALLING" ]; then
-        echo "Keeping only bam, vcf and log files"
+        echo "Keeping only bam, vcf, coverage reports and log files"
+        if [ ! -e ${ANALYSIS_DIR}/COVERAGE ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE;fi
         if [ ! -e ${ANALYSIS_DIR}/BAM ]; then mkdir -p ${ANALYSIS_DIR}/BAM; fi
         if [ ! -e ${ANALYSIS_DIR}/VCF ]; then mkdir -p ${ANALYSIS_DIR}/VCF; fi
+
     fi
     if [ ! -e ${ANALYSIS_DIR}/LOG ]; then mkdir -p ${ANALYSIS_DIR}/LOG; fi
     for dir in ${ANALYSIS_SUB_DIRS}; do 
@@ -567,11 +574,12 @@ elif [ $KEEPFILES -eq 3 ]; then
     	    mv -f ${dir}/*${FILTER}*.blat.bam ${ANALYSIS_DIR}/BAM
     	    mv -f ${dir}/*${FILTER}*.blat.bam.bai ${ANALYSIS_DIR}/BAM
 		    mv -f ${dir}/*${FILTER}*.blat.vcf* ${ANALYSIS_DIR}/VCF
+            mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
         fi
     	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
     done
     find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name METRICS \
-        -not -name BAM -not -name LOG -not -name VCF -exec rm -r {} \;
+        -not -name BAM -not -name LOG -not -name VCF -not -name COVERAGE -exec rm -r {} \;
 fi
 
 echo "$(tput setaf 1)Finished AmpliVar $MODE $(tput sgr0)"
