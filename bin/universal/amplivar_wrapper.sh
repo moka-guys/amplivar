@@ -32,11 +32,12 @@ SYS_EXE=FALSE
 SAMTOOLS=$AMPLIDIR/bin/$EXE/samtools
 SEQPREP=$AMPLIDIR/bin/$EXE/SeqPrep
 BAMLEFTALIGN=$AMPLIDIR/bin/$EXE/bamleftalign
+BWA=$AMPLIDIR/bin/$EXE/bwa
 GFSERVER=$AMPLIDIR/bin/$EXE/gfServer
 GFCLIENT=$AMPLIDIR/bin/$EXE/gfClient
 PSLREPS=$AMPLIDIR/bin/$EXE/pslReps
 PARALLEL="$AMPLIDIR/bin/$EXE/parallel --no-notice"
-export SAMTOOLS SEQPREP BAMLEFTALIGN BLAT GFCLIENT GFSERVER PSLREPS
+export SAMTOOLS SEQPREP BWA BAMLEFTALIGN GFCLIENT GFSERVER PSLREPS
 # ============================ END EDIT HERE TO USE SELF-BUILD BINARIES ================
 
 MODE=VARIANT_CALLING
@@ -72,7 +73,7 @@ function usage_BSD() {
         [-p <BIG_FLANKS>]      File with big flanks/probes. REQUIRED (when checkpoint is not specified)
         [-t <THREADS>]         Number of parallel threads. Default=2
         [-r <CHK_PT>]          Resume from checkpoint CHK_PT, where CHK_PT takes value:
-                                   1=BLAT2BAM,
+                                   1=BWA2BAM,
                                    2=VARIANT_CALL
         [-d <ADAPTERS>]        Adapters used in the assay NEXTERA or TRUSEQ. REQUIRED (if -a and -b are not set)
         [-a <ADAPTER_FWD>]         Forward adapter sequence
@@ -113,7 +114,7 @@ function usage_GNU() {
         [-p|--probes <BIG_FLANKS>]        File with big flanks/probes. REQUIRED (when checkpoint is not specified)
         [-t|--threads <THREADS>]          Number of parallel threads. Default=2
         [-r|--resume <CHK_PT>]            Resume from checkpoint CHK_PT, where CHK_PT takes value:
-                                              1=BLAT2BAM, 
+                                              1=BWA2BAM, 
                                               2=VARIANT_CALL
         [-d|--adapters <ADAPTERS>]        Adapters used in the assay NEXTERA or TRUSEQ. REQUIRED (if -a and -b are not set)
         [-a|--adapter_fwd <ADAPTER_FWD>]         Forward adapter sequence
@@ -342,7 +343,7 @@ if [ $CHKPOINT -lt 1 ]; then
 fi
 
 export FA INPUT_DIR ANALYSIS_DIR THREADS CHKPOINT USUAL_SUSPECTS BIG_FLANKS ADAPTER_FWD ADAPTER_REV MINFREQ MINCOV MINCOVVAR 
-export BLAT_PORT BLAT_HOST BLAT_TWOBIT
+#export BLAT_PORT BLAT_HOST BLAT_TWOBIT
 
 #================================= BEGIN WRAPPER FUNCTIONS ======================================
 function create_symbolic_links {
@@ -407,76 +408,100 @@ function amplivar {
 }
 export -f amplivar
 
-function amplivar_blat2bam {
+function amplivar_BWA2bam {
    	FILEDIR=$1
 	PREFIX=${FILEDIR##*/}
 	cd ${FILEDIR}
-    # sort amplicon
-	/usr/bin/env perl ${AMPLIDIR}/bin/universal/amplisort.pl  ${FILEDIR}/sorted . ${PREFIX} \
-	    ${MINCOVVAR} ${MINFREQ} 0 >>${PREFIX}.log 2>&1
-	FASTAFILE=`ls ${PREFIX}.amplivar*depth_over_${MINCOVVAR}_minor_alleles_over_${MINFREQ}_percent.fna`
-  	echo "BLAT grouped reads" >>${PREFIX}.log
-    # BLAT FASTA files
-    if [[ -z $BLAT_TWOBIT ]]; then
-        echo $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT \"\" ${FASTAFILE} ${PREFIX}.blat.pslx
-	    $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT "" ${FASTAFILE} \
-	        ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
-    else
-        echo $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT $BLAT_TWOBIT ${FASTAFILE} ${PREFIX}.blat.pslx
-        $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT $BLAT_TWOBIT ${FASTAFILE} \
-	        ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
-    fi
-    # sort BLAT results by score
-    sort -k 10 ${PREFIX}.blat.pslx > ${PREFIX}.blat.sorted.pslx && \
-    mv ${PREFIX}.blat.sorted.pslx ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
-    # chain PSL hits
-    $PSLREPS -nohead -singleHit -nearTop=0 ${PREFIX}.blat.pslx \
-        ${PREFIX}.blat.best.pslx ${PREFIX}.blat.best.psrx >>${PREFIX}.log 2>&1
-    echo "BLAT done" >>${PREFIX}.log
-    echo "Converting BLAT PSL output to SAM" >>${PREFIX}.log
-    # convert PSL results to SAM format then SAM-to-BAM, left-align, inflate grouped reads and finally SAM-to-BAM again
-    cat ${PREFIX}.blat.best.pslx | \
-        ${AMPLIDIR}/bin/universal/pslx2sam.py --fasta=${FASTAFILE} --fai=${FA}.fai - 2>>${PREFIX}.log | \
-    $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $BAMLEFTALIGN -f ${FA} 2>>${PREFIX}.log | \
-    $SAMTOOLS sort - ${PREFIX}.blat.preinflate >>${PREFIX}.log 2>&1 
-    $SAMTOOLS view -h ${PREFIX}.blat.preinflate.bam 2>>${PREFIX}.log | \
-    ${AMPLIDIR}/bin/universal/inflate_alignment.py --primer_length=11 --soft_clip_primer - 2>>${PREFIX}.log | \
-    $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.blat >>${PREFIX}.log 2>&1
-    $SAMTOOLS index ${PREFIX}.blat.bam >>${PREFIX}.log 2>&1
-    echo "Convertion done" >>${PREFIX}.log
+
+            # Call amplisort 
+	/usr/bin/env perl ${AMPLIDIR}/bin/universal/amplisort.pl  ${FILEDIR}/sorted . ${PREFIX} ${MINCOVVAR} ${MINFREQ} 0 >>${PREFIX}.log 2>&1
+	
+            # build variable to list all the fna files
+            FASTAFILE=`ls ${PREFIX}.amplivar*depth_over_${MINCOVVAR}_minor_alleles_over_${MINFREQ}_percent.fna`
+
+             # Perform alignment using BWA. The output is piped directly into samtools to generate a BAM which is piped into BAMLEFTALIGN. This output is sorted by samtools and saved as .preinflate.sorted.bam
+             $BWA mem -t $THREADS  ${FA} ${FASTAFILE} 2>>${PREFIX}.log | $SAMTOOLS view -Sub -  2>>${PREFIX}.log | $BAMLEFTALIGN -f ${FA} 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.preinflate.sorted >>${PREFIX}.log 2>&1 
+             # the sorted bamfile is then piped in sam format into the python script which inflates the BAM. This is then converted into a BAM and sorted and saved as inflated.sorted.bam
+             $SAMTOOLS view -h ${PREFIX}.preinflate.sorted.bam | ${AMPLIDIR}/bin/universal/inflate_alignment.py --primer_length=11 --soft_clip_primer - 2>>${PREFIX}.log | $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.inflated.sorted >>${PREFIX}.log 2>&1
+            # The new inflated BAM is indexed
+            $SAMTOOLS index ${PREFIX}.inflated.sorted.bam >>${PREFIX}.log 2>&1
+            echo "Convertion done" >>${PREFIX}.log
+
 }
-export -f amplivar_blat2bam
+export -f amplivar_BWA2bam
+
+# function amplivar_blat2bam {
+#        FILEDIR=$1
+#     PREFIX=${FILEDIR##*/}
+#     cd ${FILEDIR}
+#     # sort amplicon
+#     /usr/bin/env perl ${AMPLIDIR}/bin/universal/amplisort.pl  ${FILEDIR}/sorted . ${PREFIX} \
+#         ${MINCOVVAR} ${MINFREQ} 0 >>${PREFIX}.log 2>&1
+#     FASTAFILE=`ls ${PREFIX}.amplivar*depth_over_${MINCOVVAR}_minor_alleles_over_${MINFREQ}_percent.fna`
+#      echo "BLAT grouped reads" >>${PREFIX}.log
+#     # BLAT FASTA files
+#     if [[ -z $BLAT_TWOBIT ]]; then
+#         echo $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT \"\" ${FASTAFILE} ${PREFIX}.blat.pslx
+#         $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT "" ${FASTAFILE} \
+#             ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
+#     else
+#         echo $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT $BLAT_TWOBIT ${FASTAFILE} ${PREFIX}.blat.pslx
+#         $GFCLIENT -out=pslx -nohead $BLAT_HOST $BLAT_PORT $BLAT_TWOBIT ${FASTAFILE} \
+#             ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
+#     fi
+#     # sort BLAT results by score
+#     sort -k 10 ${PREFIX}.blat.pslx > ${PREFIX}.blat.sorted.pslx && \
+#     mv ${PREFIX}.blat.sorted.pslx ${PREFIX}.blat.pslx >>${PREFIX}.log 2>&1
+#     # chain PSL hits
+#     $PSLREPS -nohead -singleHit -nearTop=0 ${PREFIX}.blat.pslx \
+#         ${PREFIX}.blat.best.pslx ${PREFIX}.blat.best.psrx >>${PREFIX}.log 2>&1
+#     echo "BLAT done" >>${PREFIX}.log
+#     echo "Converting BLAT PSL output to SAM" >>${PREFIX}.log
+#     # convert PSL results to SAM format then SAM-to-BAM, left-align, inflate grouped reads and finally SAM-to-BAM again
+#     cat ${PREFIX}.blat.best.pslx | \
+#         ${AMPLIDIR}/bin/universal/pslx2sam.py --fasta=${FASTAFILE} --fai=${FA}.fai - 2>>${PREFIX}.log | \
+#     $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $BAMLEFTALIGN -f ${FA} 2>>${PREFIX}.log | \
+#     $SAMTOOLS sort - ${PREFIX}.blat.preinflate >>${PREFIX}.log 2>&1
+#     $SAMTOOLS view -h ${PREFIX}.blat.preinflate.bam 2>>${PREFIX}.log | \
+#     ${AMPLIDIR}/bin/universal/inflate_alignment.py --primer_length=11 --soft_clip_primer - 2>>${PREFIX}.log | \
+#     $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.blat >>${PREFIX}.log 2>&1
+#     $SAMTOOLS index ${PREFIX}.blat.bam >>${PREFIX}.log 2>&1
+#     echo "Convertion done" >>${PREFIX}.log
+# }
+# export -f amplivar_blat2bam
+
 
 function amplivar_call_variant {
     echo "Calling variants with VarScan" >>${PREFIX}.log
     DIR=`dirname $1`
-    PREFIX=${DIR}/`basename $1 .blat.bam`
-    RC=`$SAMTOOLS view ${PREFIX}.blat.bam | head | wc -l`
+    PREFIX=${DIR}/`basename $1 .inflated.sorted.bam`
+    RC=`$SAMTOOLS view ${PREFIX}.inflated.sorted.bam | head | wc -l`
     if [ $RC -gt 0 ]; then
-        $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.blat.bam 2>>${PREFIX}.log | \
-        /usr/bin/env java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
+        $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.inflated.sorted.bam 2>>${PREFIX}.log | \
+        java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
             --variants --output-vcf 1 --strand-filter 0 \
             --min-var-freq `echo ${MINFREQ} | awk '{print($1/100)}'` \
             --min-coverage ${MINCOV} \
             --min-reads2 ${MINCOVVAR} \
-            --p-value 0.05 > ${PREFIX}.blat.vcf 2>>${PREFIX}.log
-        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.blat.vcf
+            --p-value 0.05 > ${PREFIX}.varscan.vcf 2>>${PREFIX}.log
+        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.varscan.vcf
         echo "VarScan DONE" >>${PREFIX}.log
     else
-        echo "Empty BAM file ${PREFIX}.blat.bam. Skipping VarScan"
+        echo "Empty BAM file ${PREFIX}.inflated.sorted.bam. Skipping VarScan"
     fi
 }
 export -f amplivar_call_variant
 #================================= END WRAPPER FUNCTIONS ======================================
 
 echo ""
-echo "$(tput setaf 1)Started AmpliVar $MODE"
-echo "Version: $VERSION$(tput sgr0)"
+echo "Started AmpliVar $MODE"
+echo "Version: $VERSION"
 echo "STARTING TIME: [`date`]"
-echo "$(tput setaf 1)Setting program paths $(tput sgr0)"
+echo "Setting program paths"
 echo "SAMTOOLS=$SAMTOOLS"
 echo "SEQPREP=$SEQPREP"
 echo "BAMLEFTALIGN=$BAMLEFTALIGN"
+echo "BWA=$BWA"
 echo "GFSERVER=$GFSERVER"
 echo "GFCLIENT=$GFCLIENT"
 echo "PSLREPS=$PSLREPS"
@@ -487,17 +512,17 @@ ANALYSIS_SUB_DIRS=
 # SeqPrep + Amplivar stage
 if [ $CHKPOINT -lt 1 ]; then
     FASTQFILES=`ls ${INPUT_DIR}/*${FILTER}*.fastq.gz`
-    echo "$(tput setaf 3)Processing FASTQ files:$(tput sgr0)"
+    echo "Processing FASTQ files:"
     echo "$FASTQFILES"
-    echo "$(tput setaf 3)Creating symbolic links$(tput sgr0)"
+    echo "Creating symbolic links"
     for f in `find ${INPUT_DIR}/ -maxdepth 1 -name "*${FILTER}*_R1*.fastq.gz" -not -name "Undetermined*"`; do
         echo "$f ${INPUT_DIR} ${ANALYSIS_DIR}"; done | \
     $PARALLEL -P $THREADS --colsep ' ' -k "create_symbolic_links {1} {2} {3}"
     ANALYSIS_SUB_DIRS=`find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name VCF -not -name LOG -not -name BAM`
-    echo "$(tput setaf 3)Running SeqPrep$(tput sgr0)"
+    echo "Running SeqPrep"
     for dir in $ANALYSIS_SUB_DIRS; do echo "$dir"; done | \
     $PARALLEL -P $THREADS -k "seqprep {}"
-    echo "$(tput setaf 3)Running AmpliVar$(tput sgr0)"
+    echo "Running AmpliVar"
     for dir in $ANALYSIS_SUB_DIRS; do echo "$dir"; done | \
     $PARALLEL -P $THREADS -k "amplivar {}"
 fi
@@ -507,33 +532,19 @@ if [ -z "$ANALYSIS_SUB_DIRS" ]; then
 fi
 
 if [ $MODE != "GENOTYPING" ]; then
-    # Variant calling
     if [ $CHKPOINT -le 1 ]; then
-        # check if BLAT_HOST is localhost and gfServer is running
-        if [ $BLAT_HOST == "localhost" ]; then
-            CHECK_GFSERVER=`ps -ef | grep "gfServer start localhost $BLAT_PORT" | grep -v grep | wc -l`
-            if [ $CHECK_GFSERVER -lt 1 ]; then # no gfServer running
-                echo "BLAT server not running locally."
-                echo "Run BLAT server by the following command before running AmpliVar:"
-                echo "${GFSERVER} start localhost $BLAT_PORT $BLAT_TWOBIT &"
-                echo "After BLAT server is started, rerun script with resume option set to 1"
-                exit 1
-            fi
-        fi
-        echo "Using BLAT server $BLAT_HOST at port $BLAT_PORT"
-
-   	    FILENUMBER=`ls ${ANALYSIS_DIR}/*${FILTER}*/grouped/*${FILTER}*grp  | wc -l`
-    	echo "Processing $FILENUMBER files"
-    	echo "$(tput setaf 3)Running BLAT alignment$(tput sgr0)"
+        FILENUMBER=`ls ${ANALYSIS_DIR}/*${FILTER}*/grouped/*${FILTER}*grp  | wc -l`
+    echo "Processing $FILENUMBER files"
+    echo "Running alignment"
         for dir in $ANALYSIS_SUB_DIRS; do echo "$dir"; done | \
-        $PARALLEL -P $THREADS -k "amplivar_blat2bam {}"
+        $PARALLEL -P $THREADS -k "amplivar_BWA2bam {}"
     fi
     if [ $CHKPOINT -le 2 ]; then
     	BAM_FILES=
-    	for dir in $ANALYSIS_SUB_DIRS; do BAM_FILES="$BAM_FILES `ls $dir/*${FILTER}*.blat.bam`" ; done
+    	for dir in $ANALYSIS_SUB_DIRS; do BAM_FILES="$BAM_FILES `ls $dir/*${FILTER}*inflated.sorted.bam`" ; done
     	FILENUMBER=`echo ${BAM_FILES}  | wc -w`
     	echo "Processing $FILENUMBER files"
-    	echo "$(tput setaf 3)Calling variants$(tput sgr0)"
+    	echo "Calling variants"
         for f in ${BAM_FILES}; do echo "$f"; done  | \
         $PARALLEL -P $THREADS -k "amplivar_call_variant {}"
     fi
@@ -541,9 +552,10 @@ else
     # Genotyping (already done in amplivar.pl)
     echo "$MODE mode, skipping alignment and variant calling."
 fi
+
 # run coverage report generation when in variant calling mode
 if [ $MODE == "VARIANT_CALLING" ]; then
-    echo "$(tput setaf 3)Generating coverage reports$(tput sgr0)"
+    echo "Generating coverage reports"
     python ${AMPLIDIR}/bin/universal/Coverage_rpt.py -o $ANALYSIS_DIR -a $AMPLIDIR
 fi
 
@@ -558,7 +570,7 @@ elif [ $KEEPFILES -eq 2 ]; then
     if [ $MODE == "VARIANT_CALLING" ]; then
 	    rm ${ANALYSIS_DIR}/*/*${FILTER}*fna ${ANALYSIS_DIR}/*/*${FILTER}*tsv
         rm ${ANALYSIS_DIR}/*/*${FILTER}*psrx ${ANALYSIS_DIR}/*/*${FILTER}*pslx \
-            ${ANALYSIS_DIR}/*/*${FILTER}*blat.preinflate.bam
+            ${ANALYSIS_DIR}/*/*${FILTER}*.preinflate.bam
     fi
 elif [ $KEEPFILES -eq 3 ]; then
     if [ $MODE == "VARIANT_CALLING" ]; then
@@ -566,23 +578,21 @@ elif [ $KEEPFILES -eq 3 ]; then
         if [ ! -e ${ANALYSIS_DIR}/COVERAGE ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE;fi
         if [ ! -e ${ANALYSIS_DIR}/BAM ]; then mkdir -p ${ANALYSIS_DIR}/BAM; fi
         if [ ! -e ${ANALYSIS_DIR}/VCF ]; then mkdir -p ${ANALYSIS_DIR}/VCF; fi
-
     fi
     if [ ! -e ${ANALYSIS_DIR}/LOG ]; then mkdir -p ${ANALYSIS_DIR}/LOG; fi
     for dir in ${ANALYSIS_SUB_DIRS}; do 
         if [ $MODE == "VARIANT_CALLING" ]; then
-    	    mv -f ${dir}/*${FILTER}*.blat.bam ${ANALYSIS_DIR}/BAM
-    	    mv -f ${dir}/*${FILTER}*.blat.bam.bai ${ANALYSIS_DIR}/BAM
-		    mv -f ${dir}/*${FILTER}*.blat.vcf* ${ANALYSIS_DIR}/VCF
-            mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
+    	   mv -f ${dir}/*${FILTER}*.bam ${ANALYSIS_DIR}/BAM
+    	   mv -f ${dir}/*${FILTER}*.bam.bai ${ANALYSIS_DIR}/BAM
+                mv -f ${dir}/*${FILTER}*.vcf* ${ANALYSIS_DIR}/VCF
+                mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
         fi
     	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
     done
-    find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name METRICS \
-        -not -name BAM -not -name LOG -not -name VCF -not -name COVERAGE -exec rm -r {} \;
+    find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name METRICS -not -name BAM -not -name LOG -not -name VCF -not -name COVERAGE -exec rm -r {} \;
 fi
 
-echo "$(tput setaf 1)Finished AmpliVar $MODE $(tput sgr0)"
+echo "Finished AmpliVar $MODE"
 echo "END TIME: [`date`]"
 
 
