@@ -8,7 +8,7 @@ Description:    Parses Amplivar output files to consolidate coverage information
 
 # Input files required per sample
 # * _flanked.txt
-# *.blat.vcf
+# *.vcf
 
 import os
 import fnmatch
@@ -170,7 +170,7 @@ def main(argv):
     for root, dirnames, filenames in os.walk(ampoutput):
         dirs.append(dirnames)  # generate lists all directs found. Use to to get list of samples use as dict key
 
-    for i in dirs[0]:  # loop through each sample directory identified to find .blat.vcf and flanked.txt file
+    for i in dirs[0]:  # loop through each sample directory identified to find .vcf and flanked.txt file
         if ampoutput.endswith('/'):
             spath = (str(ampoutput + i + '/'))
         else:
@@ -179,7 +179,7 @@ def main(argv):
         dflank = {}
         for root, dirnames, filenames in os.walk(spath):
             c = 0
-            for filename in fnmatch.filter(filenames, '*.blat.vcf'):  # find vcf files
+            for filename in fnmatch.filter(filenames, '*.varscan.vcf'):  # find vcf files
                 if len(dvcf) > 0:
                     c += 1
                     dvcf['path' + str(c)] = os.path.join(root, filename)
@@ -244,7 +244,7 @@ def main(argv):
         # VARIANT SUMMARY and STRAND BIAS analysis and checks
         if len(v['vcf']) == 1:  # check: 1 vcf file found for sample
             for s in v['vcf']:
-                if k + ".blat.vcf" in v['vcf'][s]:  # check sample ID matches vcf file
+                if k + ".varscan.vcf" in v['vcf'][s]:  # check sample ID matches vcf file
                     vcffile = v['vcf'][s]
                     varSB(vcffile, rpt,df_bed)
                     varFreq(vcffile, rpt, df_bed)
