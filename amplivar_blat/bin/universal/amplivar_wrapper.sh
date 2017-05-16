@@ -43,6 +43,7 @@ MODE=VARIANT_CALLING
 INPUT_DIR=
 ANALYSIS_DIR=
 FILTER=
+BEDFILE=
 USUAL_SUSPECTS=
 BIG_FLANKS=
 THREADS=2
@@ -70,6 +71,7 @@ function usage_BSD() {
         [-i <INPUT_DIR>]       Path to directory containing the FASTQ files. REQUIRED (when checkpoint is not specified)
         [-o <OUTPUT_DIR>]      Path to directory to output results of analysis. REQUIRED 
         [-p <BIG_FLANKS>]      File with big flanks/probes. REQUIRED (when checkpoint is not specified)
+        [-B|--bed <Bedfile>]   Path to amplicon bedfile. OPTIONAL filters vcf to regions of intrest 
         [-t <THREADS>]         Number of parallel threads. Default=2
         [-r <CHK_PT>]          Resume from checkpoint CHK_PT, where CHK_PT takes value:
                                    1=BLAT2BAM,
@@ -111,6 +113,7 @@ function usage_GNU() {
         [-i|--input <INPUT_DIR>]          Path to directory containing the FASTQ files. REQUIRED (when checkpoint is not specified)
         [-o|--output <ANALYSIS_DIR>]      Path to directory to output results of analysis. REQUIRED 
         [-p|--probes <BIG_FLANKS>]        File with big flanks/probes. REQUIRED (when checkpoint is not specified)
+        [-B|--bed <Bedfile>]              Path to amplicon bedfile. OPTIONAL filters vcf to regions of intrest 
         [-t|--threads <THREADS>]          Number of parallel threads. Default=2
         [-r|--resume <CHK_PT>]            Resume from checkpoint CHK_PT, where CHK_PT takes value:
                                               1=BLAT2BAM, 
@@ -153,7 +156,7 @@ function usage {
 #=========================================== BEGIN COMMAND LINE OPTIONS ===============================================
 # GNU and BSD getopt handles differently.
 if [ $OS == "Darwin" ]; then
-    ARGS=`getopt "vhem:t:i:o:r:f:s:p:n:d:a:b:1:2:3:k:g:x:y:z:" $*`
+    ARGS=`getopt "vhem:t:i:o:B:r:f:s:p:n:d:a:b:1:2:3:k:g:x:y:z:" $*`
     if [ $? != 0 ]; then
         usage; exit 2
     fi
@@ -166,6 +169,7 @@ if [ $OS == "Darwin" ]; then
         -m) MODE=$2; shift 2;;
         -i) INPUT_DIR=$2; shift 2 ;;
         -o) ANALYSIS_DIR=$2; shift 2 ;;
+        -B) BEDFILE=$2; shift 2 ;;
         -f) FILTER=$2; echo "Processing files: $2"; shift 2 ;;
         -t) THREADS=$2; echo "Threads used: $THREADS"; shift 2 ;;
         -r) CHKPOINT=$2; echo "Starting from checkpoint: $2"; shift 2 ;;
@@ -188,7 +192,7 @@ if [ $OS == "Darwin" ]; then
     done 
 elif [ $OS == "Linux" ]; then
     # Execute getopt
-    ARGS=`getopt -o "vhem:t:i:o:r:f:s:p:n:d:a:b:1:2:3:k:g:x:y:z:" -l "version,help,system-exe,mode:,threads:,input:,output:,resume:,filter:,suspects:,probes:,transcripts:,adapters:,adapter_fwd:,adapter_rev:,minfreq:,mincov:,mincovvar:,keepfiles:genome:blat_server:blat_port:two_bit:" \
+    ARGS=`getopt -o "vhem:t:i:o:B:r:f:s:p:n:d:a:b:1:2:3:k:g:x:y:z:" -l "version,help,system-exe,mode:,threads:,input:,output:,bed:,resume:,filter:,suspects:,probes:,transcripts:,adapters:,adapter_fwd:,adapter_rev:,minfreq:,mincov:,mincovvar:,keepfiles:genome:blat_server:blat_port:two_bit:" \
           -n "$0" -- "$@"`
     
     #Bad arguments
@@ -206,6 +210,7 @@ elif [ $OS == "Linux" ]; then
         -m|--mode) MODE=$2; shift 2 ;;
         -i|--input) INPUT_DIR=$2; shift 2 ;;
         -o|--output) ANALYSIS_DIR=$2; shift 2 ;;
+        -B|--bed) BEDFILE=$2; shift 2 ; echo "Bedfile supplied: $BEDFILE";;
         -f|--filter) FILTER=$2; echo "Processing files: $2"; shift 2 ;;
         -t|--threads) THREADS=$2; echo "Threads used: $THREADS"; shift 2 ;;
         -r|--resume) CHKPOINT=$2; echo "Starting from checkpoint: $2"; shift 2 ;;
@@ -341,7 +346,13 @@ if [ $CHKPOINT -lt 1 ]; then
     fi
 fi
 
-export FA INPUT_DIR ANALYSIS_DIR THREADS CHKPOINT USUAL_SUSPECTS BIG_FLANKS ADAPTER_FWD ADAPTER_REV MINFREQ MINCOV MINCOVVAR 
+# if [ ! -f $BEDFILE ] || [ -z $BEDFILE ]; then
+#     echo "No Bed file supplied. Variants will not be filtered"
+# else 
+#     BED_FILE=$(realpath $BEDFILE)
+#     echo "Bedfile: $BED_FILE"
+# fi
+export FA INPUT_DIR ANALYSIS_DIR THREADS CHKPOINT USUAL_SUSPECTS BIG_FLANKS ADAPTER_FWD ADAPTER_REV MINFREQ MINCOV MINCOVVAR BEDFILE
 export BLAT_PORT BLAT_HOST BLAT_TWOBIT
 
 #================================= BEGIN WRAPPER FUNCTIONS ======================================
@@ -461,9 +472,25 @@ function amplivar_call_variant {
             --min-var-freq `echo ${MINFREQ} | awk '{print($1/100)}'` \
             --min-coverage ${MINCOV} \
             --min-reads2 ${MINCOVVAR} \
-            --p-value 0.05 > ${PREFIX}.blat.vcf 2>>${PREFIX}.log
-        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.blat.vcf
+            --p-value 0.05 > ${PREFIX}.blat.varscan.vcf 2>>${PREFIX}.log
+        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.blat.varscan.vcf
         echo "VarScan DONE" >>${PREFIX}.log
+
+    # if Bed file has been supplied generate filter the varscan vcf for variants within the bedfile specified regions
+    if [ ! -z $BEDFILE ] || [ -f BEDFILE ]; then
+        echo "Filtering vcf to regions specified in bed file: $BEDFILE" >>${PREFIX}.log
+        # remove chr prefix from vcf CHROM column (avoids bedtools naming convention error)
+        sed 's/chr//' ${PREFIX}.blat.varscan.vcf > ${PREFIX}.temp.vcf 2>>${PREFIX}.log
+        bedtools intersect -header -a ${PREFIX}.temp.vcf -b ${BEDFILE} > ${PREFIX}.blat.varscan.bedfiltered.vcf 2>>${PREFIX}.log
+        if [ "$?" != 0 ]; then # adds bedfile format inforation to log in the event of an error. 
+            echo "Ensure bed file has no headers and 'chr' is not present in chromsome column." >>${PREFIX}.log
+            echo "See https://genome.ucsc.edu/FAQ/FAQformat.html#format1 for guidance on bed file formats" >>${PREFIX}.log
+        fi
+        rm ${PREFIX}.temp.vcf
+    else
+        echo "No Bedfile supplied, VCF will not be filtered" >>${PREFIX}.log
+    fi 
+        
     else
         echo "Empty BAM file ${PREFIX}.blat.bam. Skipping VarScan"
     fi
@@ -575,7 +602,7 @@ elif [ $KEEPFILES -eq 3 ]; then
         if [ $MODE == "VARIANT_CALLING" ]; then
     	    mv -f ${dir}/*${FILTER}*.blat.bam ${ANALYSIS_DIR}/BAM
     	    mv -f ${dir}/*${FILTER}*.blat.bam.bai ${ANALYSIS_DIR}/BAM
-		    mv -f ${dir}/*${FILTER}*.blat.vcf* ${ANALYSIS_DIR}/VCF
+		    mv -f ${dir}/*${FILTER}*.blat.varscan.vcf* ${ANALYSIS_DIR}/VCF
             mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
         fi
     	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
@@ -586,6 +613,4 @@ fi
 
 echo "$(tput setaf 1)Finished AmpliVar $MODE $(tput sgr0)"
 echo "END TIME: [`date`]"
-
-
 

@@ -8,7 +8,7 @@ Description:    Parses Amplivar output files to consolidate coverage information
 
 # Input files required per sample
 # * _flanked.txt
-# *.blat.vcf
+# *.varscan.vcf
 
 import os
 import fnmatch
@@ -125,19 +125,27 @@ def varSB(vcffile, rpt, df_bed):
 
 def varFreq(vcffile, rpt,df_bed):
     ''' Summaries variants identified,upon which amplicon they are located and the alt allele frequency.'''
+    #print vcffile
     rpt.write("\nVARIANT/AMPLICON SUMMARY\n")
+    rpt.write("from:" + vcffile + "\n")
     avcf = vcf.Reader(open(vcffile, 'r'))
     df_var = DataFrame(columns=['Amplicon', 'Gene', 'cDNA', 'Codons','CHROM', 'POS', 'REF', 'ALT', 'Alt_Allele_Freq' ])
-    for r in avcf:
-        alt = ",".join(str(i) for i in r.ALT) #reformat alt
+    for record in avcf:
+        alt = ",".join(str(i) for i in record.ALT) #reformat alt
         # record amplicons as a list, so if >1 amplicons cover a variant, all are recorded
         amp = []
+        offtarget = False
         for index, bed in df_bed.iterrows():
             # uses variant position and amplicons start and end location to identify corresponding amplicons
-            if r.POS >= bed['Start'] and r.POS <= bed['End']:
-                for s in r.samples:
-                #     amp.append(bed['Amplivar_Name'])
-                    df_var.loc[len(df_var)] = [bed['Amplivar_Name'],  bed['Gene'], bed['cDNA'],bed['Codons'], r.CHROM, r.POS, r.REF, alt, s['FREQ']]
+            if record.POS >= bed['Start'] and record.POS <= bed['End']:
+                offtarget = True
+                for s in record.samples:
+                    df_var.loc[len(df_var)] = [bed['Amplivar_Name'],  bed['Gene'], bed['cDNA'],bed['Codons'], record.CHROM, record.POS, record.REF, alt, s['FREQ']]
+        if not offtarget:
+            for s in record.samples:
+                    df_var.loc[len(df_var)] = ['Off target', 'N/A', 'N/A','N/A', record.CHROM, record.POS, record.REF, alt, s['FREQ']]
+
+
     rpt.write(df_var.to_csv(sep='\t', index=False))
 
 
@@ -170,7 +178,7 @@ def main(argv):
     for root, dirnames, filenames in os.walk(ampoutput):
         dirs.append(dirnames)  # generate lists all directs found. Use to to get list of samples use as dict key
 
-    for i in dirs[0]:  # loop through each sample directory identified to find .blat.vcf and flanked.txt file
+    for i in dirs[0]:  # loop through each sample directory identified to find .varscan.vcf and flanked.txt file
         if ampoutput.endswith('/'):
             spath = (str(ampoutput + i + '/'))
         else:
@@ -179,7 +187,7 @@ def main(argv):
         dflank = {}
         for root, dirnames, filenames in os.walk(spath):
             c = 0
-            for filename in fnmatch.filter(filenames, '*.blat.vcf'):  # find vcf files
+            for filename in fnmatch.filter(filenames, '*.varscan.vcf'):  # find vcf files
                 if len(dvcf) > 0:
                     c += 1
                     dvcf['path' + str(c)] = os.path.join(root, filename)
@@ -206,7 +214,7 @@ def main(argv):
     ###################################################################################################################
 
     # Load Dataframe of amplicon bedfile req for mapping variants and codons to amplicons.
-    bedfile = ampdir + "/bin/universal/SwiftPanel_named.bed"
+    bedfile = ampdir + "/bin/universal/SwiftPanel_named.tsv"
     df_bed = DataFrame.from_csv(bedfile, sep="\t", index_col=None)
 
     # Run coverage report generation for each sample
@@ -244,7 +252,7 @@ def main(argv):
         # VARIANT SUMMARY and STRAND BIAS analysis and checks
         if len(v['vcf']) == 1:  # check: 1 vcf file found for sample
             for s in v['vcf']:
-                if k + ".blat.vcf" in v['vcf'][s]:  # check sample ID matches vcf file
+                if k + ".blat.varscan.vcf" in v['vcf'][s]:  # check sample ID matches vcf file
                     vcffile = v['vcf'][s]
                     varSB(vcffile, rpt,df_bed)
                     varFreq(vcffile, rpt, df_bed)
