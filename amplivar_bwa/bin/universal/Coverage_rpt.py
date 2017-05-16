@@ -126,6 +126,7 @@ def varSB(vcffile, rpt, df_bed):
 def varFreq(vcffile, rpt,df_bed):
     ''' Summaries variants identified,upon which amplicon they are located and the alt allele frequency.'''
     rpt.write("\nVARIANT/AMPLICON SUMMARY\n")
+    rpt.write("from:" + vcffile + "\n")
     avcf = vcf.Reader(open(vcffile, 'r'))
     df_var = DataFrame(columns=['Amplicon', 'Gene', 'cDNA', 'Codons','CHROM', 'POS', 'REF', 'ALT', 'Alt_Allele_Freq' ])
     for r in avcf:
