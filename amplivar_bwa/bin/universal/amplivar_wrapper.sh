@@ -420,7 +420,7 @@ function amplivar_BWA2bam {
             FASTAFILE=`ls ${PREFIX}.amplivar*depth_over_${MINCOVVAR}_minor_alleles_over_${MINFREQ}_percent.fna`
 
              # Perform alignment using BWA. The output is piped directly into samtools to generate a BAM which is piped into BAMLEFTALIGN. This output is sorted by samtools and saved as .preinflate.sorted.bam
-             $BWA mem -t $THREADS  ${FA} ${FASTAFILE} 2>>${PREFIX}.log | $SAMTOOLS view -Sub -  2>>${PREFIX}.log | $BAMLEFTALIGN -f ${FA} 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.preinflate.sorted >>${PREFIX}.log 2>&1 
+             $BWA mem  ${FA} ${FASTAFILE} 2>>${PREFIX}.log | $SAMTOOLS view -Sub -  2>>${PREFIX}.log | $BAMLEFTALIGN -f ${FA} 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.preinflate.sorted >>${PREFIX}.log 2>&1 
              # the sorted bamfile is then piped in sam format into the python script which inflates the BAM. This is then converted into a BAM and sorted and saved as inflated.sorted.bam
              $SAMTOOLS view -h ${PREFIX}.preinflate.sorted.bam | ${AMPLIDIR}/bin/universal/inflate_alignment.py --primer_length=11 --soft_clip_primer - 2>>${PREFIX}.log | $SAMTOOLS view -Sub - 2>>${PREFIX}.log | $SAMTOOLS sort - ${PREFIX}.inflated.sorted >>${PREFIX}.log 2>&1
             # The new inflated BAM is indexed
