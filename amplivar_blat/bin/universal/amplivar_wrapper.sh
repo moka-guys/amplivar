@@ -593,6 +593,7 @@ elif [ $KEEPFILES -eq 3 ]; then
     if [ $MODE == "VARIANT_CALLING" ]; then
         echo "Keeping only bam, vcf, coverage reports and log files"
         if [ ! -e ${ANALYSIS_DIR}/COVERAGE ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE;fi
+        if [ ! -e ${ANALYSIS_DIR}/COVERAGE/RAW ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE/RAW;fi
         if [ ! -e ${ANALYSIS_DIR}/BAM ]; then mkdir -p ${ANALYSIS_DIR}/BAM; fi
         if [ ! -e ${ANALYSIS_DIR}/VCF ]; then mkdir -p ${ANALYSIS_DIR}/VCF; fi
 
@@ -600,10 +601,11 @@ elif [ $KEEPFILES -eq 3 ]; then
     if [ ! -e ${ANALYSIS_DIR}/LOG ]; then mkdir -p ${ANALYSIS_DIR}/LOG; fi
     for dir in ${ANALYSIS_SUB_DIRS}; do 
         if [ $MODE == "VARIANT_CALLING" ]; then
-    	    mv -f ${dir}/*${FILTER}*.blat.bam ${ANALYSIS_DIR}/BAM
-    	    mv -f ${dir}/*${FILTER}*.blat.bam.bai ${ANALYSIS_DIR}/BAM
-		    mv -f ${dir}/*${FILTER}*.blat.varscan.vcf* ${ANALYSIS_DIR}/VCF
-            mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
+    	    mv -f ${dir}/*${FILTER}*.bam ${ANALYSIS_DIR}/BAM
+    	    mv -f ${dir}/*${FILTER}*.bam.bai ${ANALYSIS_DIR}/BAM
+		    mv -f ${dir}/*${FILTER}*.vcf* ${ANALYSIS_DIR}/VCF
+            mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE 
+            mv -f ${dir}/flanked/${FILTER}*_flanked.txt ${ANALYSIS_DIR}/COVERAGE/RAW
         fi
     	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
     done
