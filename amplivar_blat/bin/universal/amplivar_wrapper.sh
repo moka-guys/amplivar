@@ -465,6 +465,7 @@ function amplivar_call_variant {
     DIR=`dirname $1`
     PREFIX=${DIR}/`basename $1 .blat.bam`
     RC=`$SAMTOOLS view ${PREFIX}.blat.bam | head | wc -l`
+    SAMPLE=`basename $1 .blat.bam`
     if [ $RC -gt 0 ]; then
         $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.blat.bam 2>>${PREFIX}.log | \
         /usr/bin/env java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
@@ -473,8 +474,11 @@ function amplivar_call_variant {
             --min-coverage ${MINCOV} \
             --min-reads2 ${MINCOVVAR} \
             --p-value 0.05 > ${PREFIX}.blat.varscan.vcf 2>>${PREFIX}.log
-        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.blat.varscan.vcf
+        # java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.blat.varscan.vcf
         echo "VarScan DONE" >>${PREFIX}.log
+        # Add sample name to vcf
+        sed -i 's/Sample1/'"$SAMPLE"'/' ${PREFIX}.blat.varscan.vcf
+
 
     # if Bed file has been supplied generate filter the varscan vcf for variants within the bedfile specified regions
     if [ ! -z $BEDFILE ] || [ -f BEDFILE ]; then
