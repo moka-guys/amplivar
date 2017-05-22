@@ -19,9 +19,7 @@ locus, based on the flanking file table used in amplivar.
 This tool enables selectable, rapid interrogation of the sorted folder to produce fasta
 files filtered by locus, sample and relative abundance compared to the most abundant
 transcript for that locus
-
 =head1 INPUT
-
  uses @ARGV to input six parameters as space separated variables
 	1: locus directory: text; full path to directory of sorted read files from amplivar
 	2: gene ID: text; any abbreviation that pulls out the gene or amplicon of interest. Or "." for all genes
@@ -30,17 +28,12 @@ transcript for that locus
 	5: minimum percentage: integer;  minimum percentage of minor allele to output
 	6: suppress: integer; 1 (default) suppress 100% allele output, 0 include all 100% alleles above minimum percentage
 
-
 =head1 OUTPUT
-
 fasta files for selected reads &
 fasta files for reads not passing minimum read criteria &
 tsv file for read count distribution
-
 =head1 OTHER REQUIREMENTS
-
 none
-
 =head1 EXMAPLE USAGE
 
 perl amplisort.pl  <locus_directory gene_ID> <gene_ID> <sample_ID> <min_reads> <min_percent> <suppress_100%[1/0]>
@@ -186,6 +179,7 @@ sub counts_of_reads
 	my $sample_name ;
 	my $locus_ID ;
 	my $read_length ;
+	my $direction ;
 	$locus_list = $_[0];
 	chomp $locus_list;
 	# Does the file exist?
@@ -216,9 +210,20 @@ sub counts_of_reads
 		chomp $line ;
 #		next unless ($sample =~ m/($run_date)*($library_name)*($sample_name)/) ;
 		next unless ($line =~ m/$gene_ID/) ;
+		print "line = $line\n";
 		@line = split (/\t/, $line) ;
 		$read_count = $line[2] ;
+		print "read count = $read_count\n";
 		$read = $line[1] ;
+		print "locus list = $locus_list\n";
+		if ($locus_list =~ m/positive_f/)
+			{
+			$direction = 'F';
+			}
+		if ($locus_list =~m/positive_r/)
+			{
+			$direction = 'R';
+			}
 		$read_length = length($read) ;
 		next if ($read_length<22) ; #Careful you don't throw the baby out with the bathwater
 		$line_count ++ ;
@@ -238,7 +243,7 @@ sub counts_of_reads
 			if ($suppress_100 == 1 && $line_count == 1) 
 				{
 #				$locus_ID =~s/\>/$line_count\_/ ;
-				$hundred_percent = "\>$sample_file $locus_ID reads $read_count $ratio\% length $read_length\n$read\n" ;
+				$hundred_percent = "\>$sample_file $locus_ID $direction reads $read_count $ratio\% length $read_length\n$read\n" ;
 				$hundred_percent=~ s/ /_/g ;
 				$hundred_percent_reads = "\>$sample_file\_$locus_ID\t$read_count\t$read_length\n" ;
 				next ;
@@ -253,7 +258,9 @@ sub counts_of_reads
 			#my $LID = $locus_ID;
 			my @tokens = split(/\s+/, $locus_ID);
 			my $LID = "$tokens[0]\_$tokens[1]\_$tokens[2]";
-			$header_plus_read = "\>$sample_file $LID reads $read_count $ratio\% length $read_length\n$read\n";
+			print "LID = $LID\n";
+			print "locus ID = $locus_ID\n";
+			$header_plus_read = "\>$sample_file $LID $direction reads $read_count $ratio\% length $read_length\n$read\n";
 			$header_plus_read =~ s/ /_/g;
 			print $header_plus_read ;
 			print $OUTPUT $header_plus_read ;
