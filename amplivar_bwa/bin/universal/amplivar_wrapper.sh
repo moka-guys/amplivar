@@ -471,26 +471,26 @@ export -f amplivar_BWA2bam
 # export -f amplivar_blat2bam
 
 
-function amplivar_call_variant {
-    echo "Calling variants with VarScan" >>${PREFIX}.log
-    DIR=`dirname $1`
-    PREFIX=${DIR}/`basename $1 .inflated.sorted.bam`
-    RC=`$SAMTOOLS view ${PREFIX}.inflated.sorted.bam | head | wc -l`
-    if [ $RC -gt 0 ]; then
-        $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.inflated.sorted.bam 2>>${PREFIX}.log | \
-        java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
-            --variants --output-vcf 1 --strand-filter 0 \
-            --min-var-freq `echo ${MINFREQ} | awk '{print($1/100)}'` \
-            --min-coverage ${MINCOV} \
-            --min-reads2 ${MINCOVVAR} \
-            --p-value 0.05 > ${PREFIX}.varscan.vcf 2>>${PREFIX}.log
-        java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.varscan.vcf
-        echo "VarScan DONE" >>${PREFIX}.log
-    else
-        echo "Empty BAM file ${PREFIX}.inflated.sorted.bam. Skipping VarScan"
-    fi
-}
-export -f amplivar_call_variant
+# function amplivar_call_variant {
+#     echo "Calling variants with VarScan" >>${PREFIX}.log
+#     DIR=`dirname $1`
+#     PREFIX=${DIR}/`basename $1 .inflated.sorted.bam`
+#     RC=`$SAMTOOLS view ${PREFIX}.inflated.sorted.bam | head | wc -l`
+#     if [ $RC -gt 0 ]; then
+#         $SAMTOOLS mpileup -f ${FA} -B -d 500000 -q 1 ${PREFIX}.inflated.sorted.bam 2>>${PREFIX}.log | \
+#         java -jar -Xmx8g ${AMPLIDIR}/bin/universal/VarScan.v2.4.3.jar mpileup2cns \
+#             --variants --output-vcf 1 --strand-filter 0 \
+#             --min-var-freq `echo ${MINFREQ} | awk '{print($1/100)}'` \
+#             --min-coverage ${MINCOV} \
+#             --min-reads2 ${MINCOVVAR} \
+#             --p-value 0.05 > ${PREFIX}.varscan.vcf 2>>${PREFIX}.log
+#         java -Djava.awt.headless=true  -Xmx500m -jar ${AMPLIDIR}/bin/universal/igvtools.jar index ${PREFIX}.varscan.vcf
+#         echo "VarScan DONE" >>${PREFIX}.log
+#     else
+#         echo "Empty BAM file ${PREFIX}.inflated.sorted.bam. Skipping VarScan"
+#     fi
+# }
+# export -f amplivar_call_variant
 #================================= END WRAPPER FUNCTIONS ======================================
 
 echo ""
@@ -539,57 +539,57 @@ if [ $MODE != "GENOTYPING" ]; then
         for dir in $ANALYSIS_SUB_DIRS; do echo "$dir"; done | \
         $PARALLEL -P $THREADS -k "amplivar_BWA2bam {}"
     fi
-    if [ $CHKPOINT -le 2 ]; then
-    	BAM_FILES=
-    	for dir in $ANALYSIS_SUB_DIRS; do BAM_FILES="$BAM_FILES `ls $dir/*${FILTER}*inflated.sorted.bam`" ; done
-    	FILENUMBER=`echo ${BAM_FILES}  | wc -w`
-    	echo "Processing $FILENUMBER files"
-    	echo "Calling variants"
-        for f in ${BAM_FILES}; do echo "$f"; done  | \
-        $PARALLEL -P $THREADS -k "amplivar_call_variant {}"
-    fi
+    # if [ $CHKPOINT -le 2 ]; then
+    # 	BAM_FILES=
+    # 	for dir in $ANALYSIS_SUB_DIRS; do BAM_FILES="$BAM_FILES `ls $dir/*${FILTER}*inflated.sorted.bam`" ; done
+    # 	FILENUMBER=`echo ${BAM_FILES}  | wc -w`
+    # 	echo "Processing $FILENUMBER files"
+    # 	echo "Calling variants"
+    #     for f in ${BAM_FILES}; do echo "$f"; done  | \
+    #     $PARALLEL -P $THREADS -k "amplivar_call_variant {}"
+    # fi
 else
     # Genotyping (already done in amplivar.pl)
     echo "$MODE mode, skipping alignment and variant calling."
 fi
 
-# run coverage report generation when in variant calling mode
-if [ $MODE == "VARIANT_CALLING" ]; then
-    echo "Generating coverage reports"
-    python ${AMPLIDIR}/bin/universal/Coverage_rpt.py -o $ANALYSIS_DIR -a $AMPLIDIR
-fi
+# # run coverage report generation when in variant calling mode
+# if [ $MODE == "VARIANT_CALLING" ]; then
+#     echo "Generating coverage reports"
+#     python ${AMPLIDIR}/bin/universal/Coverage_rpt.py -o $ANALYSIS_DIR -a $AMPLIDIR
+# fi
 
 # House-keeping
 if [ $KEEPFILES -eq 1 ]; then
     echo "Keeping all files"
-elif [ $KEEPFILES -eq 2 ]; then
-    echo "Keeping files required for reanalysis from checkpoint 1"
-    rm -r ${ANALYSIS_DIR}/*${FILTER}*/fasta ${ANALYSIS_DIR}/*${FILTER}*/flanked \
-        ${ANALYSIS_DIR}/*${FILTER}*/locus ${ANALYSIS_DIR}/*${FILTER}*/merged \
-        ${ANALYSIS_DIR}/*${FILTER}*/qual_scores ${ANALYSIS_DIR}/*${FILTER}*/seqprep
-    if [ $MODE == "VARIANT_CALLING" ]; then
-	    rm ${ANALYSIS_DIR}/*/*${FILTER}*fna ${ANALYSIS_DIR}/*/*${FILTER}*tsv
-        rm ${ANALYSIS_DIR}/*/*${FILTER}*psrx ${ANALYSIS_DIR}/*/*${FILTER}*pslx \
-            ${ANALYSIS_DIR}/*/*${FILTER}*.preinflate.bam
-    fi
-elif [ $KEEPFILES -eq 3 ]; then
-    if [ $MODE == "VARIANT_CALLING" ]; then
-        echo "Keeping only bam, vcf, coverage reports and log files"
-        if [ ! -e ${ANALYSIS_DIR}/COVERAGE ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE;fi
-        if [ ! -e ${ANALYSIS_DIR}/BAM ]; then mkdir -p ${ANALYSIS_DIR}/BAM; fi
-        if [ ! -e ${ANALYSIS_DIR}/VCF ]; then mkdir -p ${ANALYSIS_DIR}/VCF; fi
-    fi
-    if [ ! -e ${ANALYSIS_DIR}/LOG ]; then mkdir -p ${ANALYSIS_DIR}/LOG; fi
-    for dir in ${ANALYSIS_SUB_DIRS}; do 
-        if [ $MODE == "VARIANT_CALLING" ]; then
-    	   mv -f ${dir}/*${FILTER}*.bam ${ANALYSIS_DIR}/BAM
-    	   mv -f ${dir}/*${FILTER}*.bam.bai ${ANALYSIS_DIR}/BAM
-                mv -f ${dir}/*${FILTER}*.vcf* ${ANALYSIS_DIR}/VCF
-                mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
-        fi
-    	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
-    done
-    find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name METRICS -not -name BAM -not -name LOG -not -name VCF -not -name COVERAGE -exec rm -r {} \;
+# elif [ $KEEPFILES -eq 2 ]; then
+#     echo "Keeping files required for reanalysis from checkpoint 1"
+#     rm -r ${ANALYSIS_DIR}/*${FILTER}*/fasta ${ANALYSIS_DIR}/*${FILTER}*/flanked \
+#         ${ANALYSIS_DIR}/*${FILTER}*/locus ${ANALYSIS_DIR}/*${FILTER}*/merged \
+#         ${ANALYSIS_DIR}/*${FILTER}*/qual_scores ${ANALYSIS_DIR}/*${FILTER}*/seqprep
+#     if [ $MODE == "VARIANT_CALLING" ]; then
+# 	    rm ${ANALYSIS_DIR}/*/*${FILTER}*fna ${ANALYSIS_DIR}/*/*${FILTER}*tsv
+#         rm ${ANALYSIS_DIR}/*/*${FILTER}*psrx ${ANALYSIS_DIR}/*/*${FILTER}*pslx \
+#             ${ANALYSIS_DIR}/*/*${FILTER}*.preinflate.bam
+#     fi
+# elif [ $KEEPFILES -eq 3 ]; then
+#     if [ $MODE == "VARIANT_CALLING" ]; then
+#         echo "Keeping only bam, vcf, coverage reports and log files"
+#         if [ ! -e ${ANALYSIS_DIR}/COVERAGE ]; then mkdir -p ${ANALYSIS_DIR}/COVERAGE;fi
+#         if [ ! -e ${ANALYSIS_DIR}/BAM ]; then mkdir -p ${ANALYSIS_DIR}/BAM; fi
+#         if [ ! -e ${ANALYSIS_DIR}/VCF ]; then mkdir -p ${ANALYSIS_DIR}/VCF; fi
+#     fi
+#     if [ ! -e ${ANALYSIS_DIR}/LOG ]; then mkdir -p ${ANALYSIS_DIR}/LOG; fi
+#     for dir in ${ANALYSIS_SUB_DIRS}; do 
+#         if [ $MODE == "VARIANT_CALLING" ]; then
+#     	   mv -f ${dir}/*${FILTER}*.bam ${ANALYSIS_DIR}/BAM
+#     	   mv -f ${dir}/*${FILTER}*.bam.bai ${ANALYSIS_DIR}/BAM
+#                 mv -f ${dir}/*${FILTER}*.vcf* ${ANALYSIS_DIR}/VCF
+#                 mv -f ${dir}/*coverage_report.txt ${ANALYSIS_DIR}/COVERAGE #${ANALYSIS_DIR}/COVERAGE/*coverage_report.txt
+#         fi
+#     	mv -f ${dir}/*.log ${ANALYSIS_DIR}/LOG
+#     done
+#     find ${ANALYSIS_DIR}/*${FILTER}* -maxdepth 0 -type d -not -name METRICS -not -name BAM -not -name LOG -not -name VCF -not -name COVERAGE -exec rm -r {} \;
 fi
 
 echo "Finished AmpliVar $MODE"
